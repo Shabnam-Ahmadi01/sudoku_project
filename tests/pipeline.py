@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import sys
 import os
+import keras
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
 warnings.filterwarnings('ignore')
@@ -16,16 +17,17 @@ from src.solver import SudokuValidationError, solve_sudoku
 from src.overlay import draw_solution
 from src.recognition import predict_matrix
 from src.preprocessing import process_image
-from config import DATA_PATH,TEST_DATA_PATH
+from config import DATA_PATH,TEST_DATA_PATH,MODEL_PATH
 
 def main():
     
-    path = f"{TEST_DATA_PATH}/image1024.jpg"
+    path = f"{DATA_PATH}/image1014.jpg"
     
     processed_image = process_image(path,show=True)
     print("Phase 1 OK. Corners:\n", processed_image.corners)
 
-    recognized_matrix,_ = predict_matrix(path)
+    model = keras.models.load_model(MODEL_PATH)
+    recognized_matrix,_ = predict_matrix(model,path)
     print("Phase 2 OK. Recognized matrix:")
     for row in recognized_matrix:
         print(row)

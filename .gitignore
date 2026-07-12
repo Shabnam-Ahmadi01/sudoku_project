@@ -39,4 +39,4 @@ htmlcov/
 *.ipynb
 
 # Outputs (optional - keep if you want to track them)
-# outputs/
+outputs/

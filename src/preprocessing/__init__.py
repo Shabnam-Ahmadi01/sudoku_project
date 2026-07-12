@@ -25,6 +25,11 @@ def show_image(title, img):
         plt.axis("off")
         plt.show()
 
+def visualize_cells(process_result, save_path=None, show="False"):
+    visualize_cells_on_warped(process_result.warped_bgr, process_result.warped_gray, 
+                              process_result.cells, process_result.empty_mask,
+                                    show=show, save_path=save_path)
+    
 def process_image(path, show=False):
     """Returns a dict:
         warped_bgr   - 900x900 color image of the rectified grid
@@ -33,12 +38,13 @@ def process_image(path, show=False):
         empty_mask   - list of 81 booleans, True if cell looks empty
     Raises ValueError if no grid could be detected.
     """
-    warped_rgb, warped_gray, corners, thresh = detect_and_warp(path, debug=True)
+    warped_bgr, warped_gray, corners, thresh = detect_and_warp(path, debug=True)
     cells, empty_mask = extract_cells_with_empty_mask(warped_gray)
+
+    result = ProcessResult(warped_bgr, warped_gray, cells, empty_mask, corners)
 
     if show:
         show_image("Warped grid", warped_gray)
-        visualize_cells_on_warped(warped_rgb, warped_gray, cells, empty_mask,
-                                    show=True)
+        visualize_cells(result,show=True)
         
-    return ProcessResult(warped_rgb, warped_gray, cells, empty_mask, corners)
+    return result

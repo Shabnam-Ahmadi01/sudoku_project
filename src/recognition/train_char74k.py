@@ -1,0 +1,203 @@
+"""
+Produces:
+  models/chars74_cnn.keras         - trained model
+  outputs/chars74_confusion_matrix.png
+  outputs/chars74_training_curves.png
+"""
+import os
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
+from tensorflow import keras
+import cv2
+from sklearn.model_selection import train_test_split
+
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from model import build_cnn
+
+MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "models")
+OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "outputs")
+os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(OUT_DIR, exist_ok=True)
+
+
+def load_chars74():
+    """
+    Loads Chars74K dataset where each sample folder (sampleXXX) contains images of the same character.
+    The folder name indicates the character class (e.g., sample002 = character '2').
+    """
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chars74k")
+    
+    if not os.path.exists(data_dir):
+        raise FileNotFoundError(f"Chars74K data directory not found at {data_dir}. "
+                               f"Please ensure the dataset is in the correct location.")
+    
+    images = []
+    labels = []
+    
+    # Get all sample folders
+    sample_folders = sorted([f for f in os.listdir(data_dir) 
+                            if os.path.isdir(os.path.join(data_dir, f)) and f.startswith('sample')])
+    
+    print(f"Found {len(sample_folders)} sample folders")
+    
+    # Map sample folder to class label
+    # Assuming sampleXXX format where XXX is the character class
+    # For digits: sample002 -> digit '2'
+    # For letters: sample010 -> 'A' or 'a' depending on case
+    for folder in sample_folders:
+        folder_path = os.path.join(data_dir, folder)
+        
+        # Extract class number from folder name (remove 'sample' prefix)
+        class_str = folder.replace('sample', '')
+        try:
+            class_idx = int(class_str)
+        except ValueError:
+            # If it's not a pure number, we need to map it differently
+            # For letters, sample010 might be 'A' (or 'a')
+            # Map to 0-61 for 62 classes (10 digits + 26 uppercase + 26 lowercase)
+            # This is a simplified mapping - you may need to adjust based on your actual dataset
+            if len(class_str) == 1:
+                if class_str.isdigit():
+                    class_idx = int(class_str)
+                elif class_str.isupper():
+                    class_idx = 10 + ord(class_str) - ord('A')
+                elif class_str.islower():
+                    class_idx = 36 + ord(class_str) - ord('a')
+                else:
+                    continue
+            else:
+                # Handle multi-character class names if needed
+                continue
+        
+        # Load all images in this folder
+        for img_file in os.listdir(folder_path):
+            if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')):
+                img_path = os.path.join(folder_path, img_file)
+                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                if img is not None:
+                    # Resize to 28x28 to match MNIST dimensions
+                    img = cv2.resize(img, (28, 28))
+                    images.append(img)
+                    labels.append(class_idx)
+    
+    if len(images) == 0:
+        raise ValueError("No images found in the dataset. Please check the data directory structure.")
+    
+    images = np.array(images)
+    labels = np.array(labels)
+    
+    # Normalize pixel values
+    images = images.astype("float32") / 255.0
+    
+    # Add channel dimension
+    images = images[..., np.newaxis]
+    
+    print(f"Loaded {len(images)} images from {len(sample_folders)} classes")
+    print(f"Class distribution: {np.bincount(labels)}")
+    
+    # Split into train and test sets (80-20 split)
+    x_train, x_test, y_train, y_test = train_test_split(
+        images, labels, test_size=0.2, random_state=42, stratify=labels
+    )
+    
+    return (x_train, y_train), (x_test, y_test)
+
+
+def plot_training_curves(history, path):
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    axes[0].plot(history.history["loss"], label="train")
+    axes[0].plot(history.history["val_loss"], label="val")
+    axes[0].set_title("Loss")
+    axes[0].set_xlabel("epoch")
+    axes[0].legend()
+
+    axes[1].plot(history.history["accuracy"], label="train")
+    axes[1].plot(history.history["val_accuracy"], label="val")
+    axes[1].set_title("Accuracy")
+    axes[1].set_xlabel("epoch")
+    axes[1].legend()
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=120)
+    plt.close(fig)
+
+
+def plot_confusion_matrix(y_true, y_pred, labels, path, title):
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+    fig, ax = plt.subplots(figsize=(7, 7))
+    disp.plot(ax=ax, cmap="Blues", colorbar=False)
+    ax.set_title(title)
+    fig.tight_layout()
+    fig.savefig(path, dpi=120)
+    plt.close(fig)
+    return cm
+
+
+def main(epochs=15, batch_size=128):
+    (x_train, y_train), (x_test, y_test) = load_chars74()
+
+    # held-out validation split from training data
+    val_frac = 0.1
+    n_val = int(len(x_train) * val_frac)
+    x_val, y_val = x_train[:n_val], y_train[:n_val]
+    x_train, y_train = x_train[n_val:], y_train[n_val:]
+
+    # Determine number of classes from the dataset
+    num_classes = len(np.unique(y_train))
+    print(f"Number of classes: {num_classes}")
+    
+    model = build_cnn(input_shape=(28, 28, 1), num_classes=num_classes, augment=True)
+    model.compile(
+        optimizer=keras.optimizers.Adam(1e-3),
+        loss="sparse_categorical_crossentropy",   # cross entropy, integer labels
+        metrics=["accuracy"],
+    )
+    model.summary()
+
+    callbacks = [
+        keras.callbacks.EarlyStopping(monitor="val_loss", patience=4,
+                                       restore_best_weights=True),
+        keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5,
+                                           patience=2),
+    ]
+
+    history = model.fit(
+        x_train, y_train,
+        validation_data=(x_val, y_val),
+        epochs=epochs,
+        batch_size=batch_size,
+        callbacks=callbacks,
+        verbose=2,
+    )
+
+    plot_training_curves(history, os.path.join(OUT_DIR, "chars74_training_curves.png"))
+
+    # final evaluation on held-out test set
+    test_loss, test_acc = model.evaluate(x_test, y_test, verbose=0)
+    print(f"\nChars74K test accuracy: {test_acc:.4f}  (loss: {test_loss:.4f})")
+
+    y_pred = np.argmax(model.predict(x_test, verbose=0), axis=1)
+    print("\nClassification report:\n",
+          classification_report(y_test, y_pred, digits=3))
+
+    # Create labels for all classes
+    labels = list(range(num_classes))
+    
+    plot_confusion_matrix(
+        y_test, y_pred, labels=labels,
+        path=os.path.join(OUT_DIR, "chars74_confusion_matrix.png"),
+        title=f"Chars74K Test Confusion Matrix (acc={test_acc:.3f})",
+    )
+
+    model.save(os.path.join(MODEL_DIR, "chars74_cnn.keras"))
+    print(f"\nSaved model to {os.path.join(MODEL_DIR, 'chars74_cnn.keras')}")
+    return model, history
+
+
+if __name__ == "__main__":
+    main()

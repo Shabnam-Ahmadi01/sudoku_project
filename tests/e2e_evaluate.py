@@ -6,11 +6,12 @@ import argparse
 import numpy as np
 import sys
 import os
+import cv2
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.recognition.dat_parser import parse_dat_file
 from src.solver import solve_sudoku
 from src.recognition import predict_matrix
-from src.preprocessing import process_image
+from src.preprocessing import process_image,visualize_cells
 from config import DATA_PATH, MODEL_PATH
 
 import warnings
@@ -26,8 +27,20 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Disable GPU detection
 def matrices_equal(a, b):
     return all(a[r][c] == b[r][c] for r in range(9) for c in range(9))
  
+def save_failed_attempt(process_result,output_path,status,prediction):
+    visualize_cells(process_result=process_result, save_path=output_path,show=False)
 
-def evaluate_dataset(root_dir=DATA_PATH, model=MODEL_PATH, confidence_threshold=0.6,
+    print(f"Image saved to: {output_path}")
+    txt_path = os.path.splitext(output_path)[0] + '.txt'
+    
+    with open(txt_path, 'w') as f:
+        f.write(status)
+        f.write(np.array2string(prediction))
+    
+    print(f"Text file saved to: {txt_path}")
+
+
+def evaluate_dataset(root_dir,model,confidence_threshold=0.6,
                       max_images=None, verbose=True):
     images = []
     for i, img_path in enumerate(glob.glob(os.path.join(root_dir, "*.jpg"))):
@@ -70,7 +83,7 @@ def evaluate_dataset(root_dir=DATA_PATH, model=MODEL_PATH, confidence_threshold=
             continue
  
         try:
-            detection = process_image(img_path)
+            process_res = process_image(img_path)
         except Exception as e:
             results["grid_detection_failed"] += 1
             record["outcome"] = "grid_detection_failed"
@@ -80,7 +93,8 @@ def evaluate_dataset(root_dir=DATA_PATH, model=MODEL_PATH, confidence_threshold=
             continue
  
         recognized_matrix, confidences = predict_matrix(
-            img_path,
+            img_path=img_path,
+            model=model,
             confidence_threshold=confidence_threshold,
         )
         record["recognized_matrix"] = recognized_matrix
@@ -90,18 +104,25 @@ def evaluate_dataset(root_dir=DATA_PATH, model=MODEL_PATH, confidence_threshold=
             solved, conflicts = solve_sudoku(recognized_matrix, raise_on_invalid=False)
         except ValueError:
             solved, conflicts = None, []
- 
+
+        filename = os.path.basename(img_path)
         if conflicts:
             results["recognition_invalid"] += 1
             record["outcome"] = "recognition_invalid"
             record["conflicts"] = conflicts
+            save_failed_attempt(process_res,output_path=f"../outputs/failed/{filename}",
+                                prediction=recognized_matrix, status="recognition_invalid")
         elif solved is None:
             results["unsolvable"] += 1
             record["outcome"] = "unsolvable"
+            save_failed_attempt(process_res,output_path=f"../outputs/failed/{filename}",
+                                prediction=recognized_matrix, status="unsolvable")
         elif matrices_equal(solved, true_solution):
             results["hit"] += 1
             record["outcome"] = "hit"
         else:
+            save_failed_attempt(process_res,output_path=f"../outputs/failed/{filename}",
+                                prediction=recognized_matrix,status="solved_but_wrong")
             results["solved_but_wrong"] += 1
             record["outcome"] = "solved_but_wrong"
  
@@ -140,16 +161,17 @@ def print_summary(results):
  
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("data_root", help="path to v2_train or v2_test folder")
-    parser.add_argument("--model", default="models/mnist_cnn.keras")
+    parser.add_argument("--data_root", help="path to v2_train or v2_test folder",default="../data/v2_train/v2_train")
+    parser.add_argument("--model", default="../models/mnist_cnn.keras")
     parser.add_argument("--confidence_threshold", type=float, default=0.6)
     parser.add_argument("--max_images", type=int, default=None)
     args = parser.parse_args()
  
     from tensorflow import keras
-    model = keras.models.load_model(MODEL_PATH)
+    model = keras.models.load_model(args.model)
  
     results, per_image = evaluate_dataset(
+        model=model,
         root_dir=args.data_root,
         confidence_threshold=args.confidence_threshold,
         max_images=args.max_images,

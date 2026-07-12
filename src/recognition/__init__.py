@@ -5,15 +5,13 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from .sudoku_preprocess import sudoku_to_mnist
-from config import MODEL_PATH
 
 
-def predict_matrix(img_path, confidence_threshold=0.6):
+def predict_matrix(model,img_path, confidence_threshold=0.6):
     X, y, meta = sudoku_to_mnist(img_path)
     X = np.array(X, dtype=np.uint8)[..., np.newaxis]
     y = np.array(y, dtype=np.int64)
 
-    model = keras.models.load_model(MODEL_PATH)
     predictions = model.predict(X, verbose=0)
 
     y_pred = np.argmax(predictions, axis=1)
