@@ -26,7 +26,10 @@ def build_custom_digit_dataset(root_dir, max_images=None, verbose=True):
 
     for img_path in images:
         try:
-            X, y, meta = sudoku_to_mnist(img_path)
+            img_X, img_y, img_meta = sudoku_to_mnist(img_path)
+            X.extend(img_X)
+            y.extend(img_y)
+            meta.extend(img_meta)
 
         except Exception as e:
             n_failed += 1

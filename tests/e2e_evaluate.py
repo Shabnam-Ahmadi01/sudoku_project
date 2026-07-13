@@ -12,6 +12,7 @@ from src.recognition.dat_parser import parse_dat_file
 from src.solver import solve_sudoku
 from src.recognition import predict_matrix
 from src.preprocessing import process_image,visualize_cells
+from src.recognition.model import RandomGaussianBlur
 from config import DATA_PATH, MODEL_PATH
 
 import warnings
@@ -28,16 +29,17 @@ def matrices_equal(a, b):
     return all(a[r][c] == b[r][c] for r in range(9) for c in range(9))
  
 def save_failed_attempt(process_result,output_path,status,prediction):
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     visualize_cells(process_result=process_result, save_path=output_path,show=False)
 
-    print(f"Image saved to: {output_path}")
+    # print(f"Image saved to: {output_path}")
     txt_path = os.path.splitext(output_path)[0] + '.txt'
     
     with open(txt_path, 'w') as f:
         f.write(status)
         f.write(np.array2string(prediction))
     
-    print(f"Text file saved to: {txt_path}")
+    # print(f"Text file saved to: {txt_path}")
 
 
 def evaluate_dataset(root_dir,model,confidence_threshold=0.6,

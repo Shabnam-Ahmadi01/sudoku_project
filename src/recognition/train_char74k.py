@@ -7,6 +7,7 @@ Produces:
 import os
 import numpy as np
 import matplotlib
+import sys
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
@@ -14,8 +15,9 @@ from tensorflow import keras
 import cv2
 from sklearn.model_selection import train_test_split
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+from src.recognition.sudoku_preprocess import cell_to_mnist_format
 import sys
-sys.path.insert(0, os.path.dirname(__file__))
 from model import build_cnn
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "models")
@@ -40,7 +42,8 @@ def load_chars74():
     
     # Get all sample folders
     sample_folders = sorted([f for f in os.listdir(data_dir) 
-                            if os.path.isdir(os.path.join(data_dir, f)) and f.startswith('sample')])
+                            if os.path.isdir(os.path.join(data_dir, f)) and f.lower().startswith('sample')
+                            and 1 <= int(f.lower().replace('sample', '')) <= 10])
     
     print(f"Found {len(sample_folders)} sample folders")
     
@@ -52,9 +55,9 @@ def load_chars74():
         folder_path = os.path.join(data_dir, folder)
         
         # Extract class number from folder name (remove 'sample' prefix)
-        class_str = folder.replace('sample', '')
+        class_str = folder.lower().replace('sample', '')
         try:
-            class_idx = int(class_str)
+            class_idx = int(class_str) - 1   # sample001->0 ... sample010->9
         except ValueError:
             # If it's not a pure number, we need to map it differently
             # For letters, sample010 might be 'A' (or 'a')
@@ -77,12 +80,16 @@ def load_chars74():
         for img_file in os.listdir(folder_path):
             if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')):
                 img_path = os.path.join(folder_path, img_file)
-                img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                if img is not None:
-                    # Resize to 28x28 to match MNIST dimensions
-                    img = cv2.resize(img, (28, 28))
-                    images.append(img)
-                    labels.append(class_idx)
+                raw = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+                if raw is not None:
+                    # Match inference-time preprocessing exactly: crop to
+                    # digit bounding box, invert to white-on-black, center
+                    # in a padded 28x28 canvas (same as cell_to_mnist_format
+                    # applies to real sudoku cell crops at inference time).
+                    img = cell_to_mnist_format(raw)
+                    if img is not None:
+                        images.append(img)
+                        labels.append(class_idx)
     
     if len(images) == 0:
         raise ValueError("No images found in the dataset. Please check the data directory structure.")
@@ -90,8 +97,9 @@ def load_chars74():
     images = np.array(images)
     labels = np.array(labels)
     
-    # Normalize pixel values
-    images = images.astype("float32") / 255.0
+    # Keep raw 0-255 range -- the model's own Rescaling(1/255) layer
+    # normalizes at inference/training time, so don't double-normalize here.
+    images = images.astype("float32")
     
     # Add channel dimension
     images = images[..., np.newaxis]

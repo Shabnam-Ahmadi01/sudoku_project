@@ -142,7 +142,9 @@ def visualize_cells_on_warped(warped_bgr, warped_gray, cells, empty_mask,
     cv2.addWeighted(overlay, alpha, vis, 1 - alpha, 0, vis)
 
     if save_path:
-        cv2.imwrite(save_path, vis)
+        ok = cv2.imwrite(save_path, vis)
+        if not ok:
+            print(f"  [WARNING] Failed to write image to {save_path}")
     if show:
         try:
             cv2.namedWindow("Cells visualization", cv2.WINDOW_NORMAL)

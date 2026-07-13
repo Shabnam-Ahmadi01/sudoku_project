@@ -12,6 +12,7 @@ from sklearn.metrics import confusion_matrix, classification_report, ConfusionMa
 from tensorflow import keras
 
 from .custom_dataset import build_custom_digit_dataset
+from .model import RandomGaussianBlur
 from config import OUT_DIR, MODEL_PATH, DATA_PATH,TEST_DATA_PATH
 
 def evaluate(model, X, y, tag="custom_data"):

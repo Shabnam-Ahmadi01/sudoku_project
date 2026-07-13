@@ -16,6 +16,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Disable GPU detection
 from src.solver import SudokuValidationError, solve_sudoku
 from src.overlay import draw_solution
 from src.recognition import predict_matrix
+from src.recognition.model import RandomGaussianBlur
 from src.preprocessing import process_image
 from config import DATA_PATH,TEST_DATA_PATH,MODEL_PATH
 
@@ -54,7 +55,7 @@ def main():
     # also sanity-check: overlay drawn on the WARPED image directly (no
     # inverse-warp) to isolate whether errors are in rendering vs in the
     # inverse-perspective step
-    from overlay.render import render_overlay_square
+    from src.overlay.render import render_overlay_square
     overlay_sq = render_overlay_square(recognized_matrix, solved)
     alpha = overlay_sq[:, :, 3:4].astype(np.float32) / 255.0
     warped_check = (overlay_sq[:, :, :3].astype(np.float32) * alpha +

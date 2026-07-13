@@ -1,5 +1,31 @@
 from tensorflow import keras
 from tensorflow.keras import layers
+import tensorflow as tf
+
+@keras.utils.register_keras_serializable(package="sudoku_recognition")
+class RandomGaussianBlur(layers.Layer):
+    """Applies a random-sigma Gaussian blur, only at training time."""
+    def __init__(self, min_sigma=0.0, max_sigma=2.0, kernel_size=7, **kwargs):
+        super().__init__(**kwargs)
+        self.min_sigma = min_sigma
+        self.max_sigma = max_sigma
+        self.kernel_size = kernel_size
+
+    def _gaussian_kernel(self, sigma):
+        ax = tf.range(-(self.kernel_size // 2), self.kernel_size // 2 + 1, dtype=tf.float32)
+        xx, yy = tf.meshgrid(ax, ax)
+        kernel = tf.exp(-(xx**2 + yy**2) / (2.0 * sigma**2))
+        kernel = kernel / tf.reduce_sum(kernel)
+        return kernel[:, :, tf.newaxis, tf.newaxis]
+
+    def call(self, x, training=None):
+        if not training:
+            return x
+        sigma = tf.random.uniform([], self.min_sigma, self.max_sigma)
+        kernel = self._gaussian_kernel(sigma)
+        channels = tf.shape(x)[-1]
+        kernel = tf.tile(kernel, [1, 1, channels, 1])
+        return tf.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1], padding="SAME")
 
 
 def build_augmentation():
@@ -9,6 +35,7 @@ def build_augmentation():
         layers.RandomRotation(0.06),          # ~ +/-10 degrees
         layers.RandomTranslation(0.08, 0.08),
         layers.RandomZoom(0.08),
+        RandomGaussianBlur(min_sigma=0.0, max_sigma=2.0, kernel_size=7),
     ], name="augmentation")
 
 
