@@ -7,26 +7,69 @@ are simple fixed arithmetic here — no ratio concerns at this stage.
 import cv2
 import numpy as np
 
-CELL_MARGIN_FRAC = 0.12   # fraction of cell size to crop off each edge
+CELL_MARGIN_FRAC = 0.08   # fraction of cell size to crop off each edge
 EMPTY_PIXEL_THRESH = 0.1  # fraction of non-zero pixels below which a cell
                             # is considered empty
 
+def _detect_grid_line_positions(warped_gray, size, n=9, search_frac=0.15):
+    """Detects the (n+1) grid line positions along both axes by locating
+    the strongest line near each nominal (uniformly-spaced) position,
+    instead of trusting uniform spacing outright. The outer perspective
+    warp is only as accurate as the 4 detected corners -- small errors
+    there don't distribute evenly across the grid, so nominal (arithmetic)
+    cell boundaries drift off the true lines by a varying amount depending
+    on position. This pulls boundaries back onto the real lines.
+    Returns (y_lines, x_lines), each a list of n+1 ints."""
+    blur = cv2.GaussianBlur(warped_gray, (5, 5), 0)
+    thresh = cv2.adaptiveThreshold(
+        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 5
+    )
+    step = size / n
+    search = max(3, int(step * search_frac))
+    row_profile = thresh.sum(axis=1).astype(np.float64)
+    col_profile = thresh.sum(axis=0).astype(np.float64)
+    row_bg = np.median(row_profile)
+    col_bg = np.median(col_profile)
+
+    def _lines(profile, bg):
+        lines = []
+        for i in range(n + 1):
+            nominal = int(round(i * step))
+            if i == 0 or i == n:
+                # outer border: trust the warp itself here, searching near
+                # the image edge risks a partial/unreliable window
+                lines.append(nominal)
+                continue
+            lo = max(0, nominal - search)
+            hi = min(size, nominal + search + 1)
+            window = profile[lo:hi]
+            best_idx = int(np.argmax(window))
+            best_val = window[best_idx]
+            # only trust the detected peak if it's clearly a line, not
+            # noise/a digit stroke -- else fall back to nominal position
+            if best_val > bg * 1.5:
+                lines.append(lo + best_idx)
+            else:
+                lines.append(nominal)
+        return lines
+
+    return _lines(row_profile, row_bg), _lines(col_profile, col_bg)
 
 def split_into_cells(warped_gray, margin_frac=CELL_MARGIN_FRAC):
     """Split a square grayscale image into an 81-length list of cell crops,
-    row-major order (row 0 col 0, row 0 col 1, ..., row 8 col 8)."""
+    row-major order, using detected true grid line positions rather than
+    assumed uniform spacing."""
     size = warped_gray.shape[0]
-    step = size / 9.0
-    margin = int(step * margin_frac)
+    y_lines, x_lines = _detect_grid_line_positions(warped_gray, size)
 
     cells = []
     for row in range(9):
         for col in range(9):
-            y1 = int(row * step) + margin
-            y2 = int((row + 1) * step) - margin
-            x1 = int(col * step) + margin
-            x2 = int((col + 1) * step) - margin
-            cell = warped_gray[y1:y2, x1:x2]
+            y1, y2 = y_lines[row], y_lines[row + 1]
+            x1, x2 = x_lines[col], x_lines[col + 1]
+            my = int((y2 - y1) * margin_frac)
+            mx = int((x2 - x1) * margin_frac)
+            cell = warped_gray[y1 + my:y2 - my, x1 + mx:x2 - mx]
             cells.append(cell)
     return cells
 
@@ -92,8 +135,7 @@ def visualize_cells_on_warped(warped_bgr, warped_gray, cells, empty_mask,
         vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
 
     size = warped_gray.shape[0]
-    step = size / 9.0
-    margin = int(step * margin_frac)
+    y_lines, x_lines = _detect_grid_line_positions(warped_gray, size)
 
     overlay = vis.copy()
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -101,10 +143,8 @@ def visualize_cells_on_warped(warped_bgr, warped_gray, cells, empty_mask,
     for idx in range(81):
         row = idx // 9
         col = idx % 9
-        y1 = int(row * step) + margin
-        y2 = int((row + 1) * step) - margin
-        x1 = int(col * step) + margin
-        x2 = int((col + 1) * step) - margin
+        y1, y2 = y_lines[row], y_lines[row + 1]
+        x1, x2 = x_lines[col], x_lines[col + 1]
 
         # color: green = empty, red = digit present
         if empty_mask[idx]:
