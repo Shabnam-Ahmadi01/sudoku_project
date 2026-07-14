@@ -84,7 +84,7 @@ def evaluate_dataset(root_dir, model, confidence_threshold=CONFIDENCE_THRESHOLD,
             continue
  
         try:
-            solve_results, processed_image, recognized_matrix,confidences, status = sudoku_pipeline(img_path, model, confidence_threshold=confidence_threshold)
+            solve_results, processed_image, recognized_matrix,confidences, status,_ = sudoku_pipeline(img_path, model, confidence_threshold=confidence_threshold)
             if status == 1:
                 results["grid_detection_failed"] += 1
                 record["outcome"] = "grid_detection_failed"
