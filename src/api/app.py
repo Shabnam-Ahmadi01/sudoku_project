@@ -77,7 +77,9 @@ async def solve(file: UploadFile = File(...)):
             )
 
             # Phase 3 — solve
-            solved, conflicts = solve_sudoku(recognized, raise_on_invalid=False)
+            solve_results = solve_sudoku(recognized)
+            solved = solve_results.solved_matrix
+            conflicts = solve_results.conflicts
 
             if not conflicts and solved is not None:
                 # Unrotate both matrices back to the original image orientation

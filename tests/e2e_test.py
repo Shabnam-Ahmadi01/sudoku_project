@@ -8,6 +8,7 @@ import sys
 import os
 import cv2
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.pipeline import sudoku_pipeline
 from src.recognition.dat_parser import parse_dat_file, dat_path
 from src.solver import solve_sudoku
 from src.recognition import predict_matrix
@@ -69,7 +70,8 @@ def evaluate_dataset(root_dir, model, confidence_threshold=CONFIDENCE_THRESHOLD,
         # ground truth: solve the TRUE given matrix directly (bypasses
         # recognition entirely) -- this is "the right answer"
         try:
-            true_solution, _ = solve_sudoku(true_given, raise_on_invalid=False)
+            solve_result= solve_sudoku(true_given, raise_on_invalid=False)
+            true_solution = solve_result.solved_matrix
         except ValueError:
             true_solution = None
         if true_solution is None:
@@ -82,45 +84,39 @@ def evaluate_dataset(root_dir, model, confidence_threshold=CONFIDENCE_THRESHOLD,
             continue
  
         try:
-            process_res = process_image(img_path)
-        except Exception as e:
-            results["grid_detection_failed"] += 1
-            record["outcome"] = "grid_detection_failed"
-            per_image.append(record)
-            if verbose:
-                print(f"  [FAIL grid] {record['image']}: {e}")
-            continue
- 
-        recognized_matrix, confidences = predict_matrix(
-            img_path=img_path,
-            model=model,
-            confidence_threshold=confidence_threshold,
-        )
-        record["recognized_matrix"] = recognized_matrix
-        record["mean_confidence"] = float(confidences.mean())
- 
-        try:
-            solved, conflicts = solve_sudoku(recognized_matrix, raise_on_invalid=False)
+            solve_results, processed_image, recognized_matrix,confidences, status = sudoku_pipeline(img_path, model, confidence_threshold=confidence_threshold)
+            if status == 1:
+                results["grid_detection_failed"] += 1
+                record["outcome"] = "grid_detection_failed"
+                per_image.append(record)
+                continue
+            solved = solve_results.solved_matrix
+            conflicts = solve_results.conflicts
+            
         except ValueError:
             solved, conflicts = None, []
+
+
+        record["recognized_matrix"] = recognized_matrix
+        record["mean_confidence"] = float(confidences.mean())
 
         filename = os.path.basename(img_path)
         if conflicts:
             results["recognition_invalid"] += 1
             record["outcome"] = "recognition_invalid"
             record["conflicts"] = conflicts
-            save_failed_attempt(process_res,output_path=f"../outputs/failed2/{filename}",
+            save_failed_attempt(processed_image,output_path=f"../outputs/failed2/{filename}",
                                 prediction=recognized_matrix, status="recognition_invalid")
         elif solved is None:
             results["unsolvable"] += 1
             record["outcome"] = "unsolvable"
-            save_failed_attempt(process_res,output_path=f"../outputs/failed2/{filename}",
+            save_failed_attempt(processed_image,output_path=f"../outputs/failed2/{filename}",
                                 prediction=recognized_matrix, status="unsolvable")
         elif matrices_equal(solved, true_solution):
             results["hit"] += 1
             record["outcome"] = "hit"
         else:
-            save_failed_attempt(process_res,output_path=f"../outputs/failed2/{filename}",
+            save_failed_attempt(processed_image,output_path=f"../outputs/failed2/{filename}",
                                 prediction=recognized_matrix,status="solved_but_wrong")
             results["solved_but_wrong"] += 1
             record["outcome"] = "solved_but_wrong"

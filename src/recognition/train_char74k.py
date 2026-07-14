@@ -30,7 +30,7 @@ os.makedirs(OUT_DIR, exist_ok=True)
 def load_chars74():
     """
     Loads Chars74K dataset where each sample folder (sampleXXX) contains images of the same character.
-    The folder name indicates the character class (e.g., sample002 = character '2').
+    The folder name indicates the character class (e.g., sample002 = character '1').
     """
     data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chars74k")
     
