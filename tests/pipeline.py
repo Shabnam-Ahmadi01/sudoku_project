@@ -22,13 +22,14 @@ from config import DATA_PATH,TEST_DATA_PATH,MODEL_PATH
 
 def main():
     
-    path = f"{DATA_PATH}/image1014.jpg"
+    path = f"{TEST_DATA_PATH}/image1005.jpg"
     
     processed_image = process_image(path,show=True)
     print("Phase 1 OK. Corners:\n", processed_image.corners)
+    # print(processed_image.cells)
 
     model = keras.models.load_model(MODEL_PATH)
-    recognized_matrix,_ = predict_matrix(model,path)
+    recognized_matrix,_ = predict_matrix(model,path,0.1)
     print("Phase 2 OK. Recognized matrix:")
     for row in recognized_matrix:
         print(row)

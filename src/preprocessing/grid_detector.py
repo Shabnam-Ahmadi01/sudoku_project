@@ -13,7 +13,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 
-WARP_SIZE = 900           # fixed output size after perspective transform
+from config import WARP_SIZE
+
 DETECT_MAX_DIM = 1200     # max dimension used for contour search (precision
                            # vs speed tradeoff -- too low causes corner
                            # error that gets amplified after warping)

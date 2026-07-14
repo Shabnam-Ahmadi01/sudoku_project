@@ -11,8 +11,7 @@ as "here's what goes in the blanks" rather than redrawing the whole grid.
 
 import cv2
 import numpy as np
-
-WARP_SIZE = 900  # must match grid_detector.WARP_SIZE
+from config import WARP_SIZE
 
 
 def _solved_cell_positions(given_matrix, solved_matrix):

@@ -8,12 +8,12 @@ import sys
 import os
 import cv2
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.recognition.dat_parser import parse_dat_file
+from src.recognition.dat_parser import parse_dat_file, dat_path
 from src.solver import solve_sudoku
 from src.recognition import predict_matrix
-from src.preprocessing import process_image,visualize_cells
+from src.preprocessing import process_image, visualize_cells
 from src.recognition.model import RandomGaussianBlur
-from config import DATA_PATH, MODEL_PATH
+from config import DATA_PATH, MODEL_PATH, CONFIDENCE_THRESHOLD
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -31,18 +31,15 @@ def matrices_equal(a, b):
 def save_failed_attempt(process_result,output_path,status,prediction):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     visualize_cells(process_result=process_result, save_path=output_path,show=False)
-
-    # print(f"Image saved to: {output_path}")
     txt_path = os.path.splitext(output_path)[0] + '.txt'
     
     with open(txt_path, 'w') as f:
         f.write(status)
         f.write(np.array2string(prediction))
-    
-    # print(f"Text file saved to: {txt_path}")
 
 
-def evaluate_dataset(root_dir,model,confidence_threshold=0.6,
+
+def evaluate_dataset(root_dir, model, confidence_threshold=CONFIDENCE_THRESHOLD,
                       max_images=None, verbose=True):
     images = []
     for i, img_path in enumerate(glob.glob(os.path.join(root_dir, "*.jpg"))):
@@ -62,11 +59,11 @@ def evaluate_dataset(root_dir,model,confidence_threshold=0.6,
     per_image = []
  
     for img_path in images:
-        dat_path = img_path.replace(".jpg", ".dat")
+        label_file = dat_path(img_path)
         results["total"] += 1
         record = {"image": os.path.basename(img_path)}
  
-        label_data = parse_dat_file(dat_path)
+        label_data = parse_dat_file(label_file)
         true_given = label_data["matrix"]
  
         # ground truth: solve the TRUE given matrix directly (bypasses
@@ -112,18 +109,18 @@ def evaluate_dataset(root_dir,model,confidence_threshold=0.6,
             results["recognition_invalid"] += 1
             record["outcome"] = "recognition_invalid"
             record["conflicts"] = conflicts
-            save_failed_attempt(process_res,output_path=f"../outputs/failed/{filename}",
+            save_failed_attempt(process_res,output_path=f"../outputs/failed2/{filename}",
                                 prediction=recognized_matrix, status="recognition_invalid")
         elif solved is None:
             results["unsolvable"] += 1
             record["outcome"] = "unsolvable"
-            save_failed_attempt(process_res,output_path=f"../outputs/failed/{filename}",
+            save_failed_attempt(process_res,output_path=f"../outputs/failed2/{filename}",
                                 prediction=recognized_matrix, status="unsolvable")
         elif matrices_equal(solved, true_solution):
             results["hit"] += 1
             record["outcome"] = "hit"
         else:
-            save_failed_attempt(process_res,output_path=f"../outputs/failed/{filename}",
+            save_failed_attempt(process_res,output_path=f"../outputs/failed2/{filename}",
                                 prediction=recognized_matrix,status="solved_but_wrong")
             results["solved_but_wrong"] += 1
             record["outcome"] = "solved_but_wrong"
@@ -163,9 +160,9 @@ def print_summary(results):
  
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_root", help="path to v2_train or v2_test folder",default="../data/v2_train/v2_train")
-    parser.add_argument("--model", default="../models/mnist_cnn.keras")
-    parser.add_argument("--confidence_threshold", type=float, default=0.6)
+    parser.add_argument("--data_root", help="path to v2_train or v2_test folder",default=DATA_PATH)
+    parser.add_argument("--model", default=MODEL_PATH, help="path to trained model")
+    parser.add_argument("--confidence_threshold", type=float, default=CONFIDENCE_THRESHOLD)
     parser.add_argument("--max_images", type=int, default=None)
     args = parser.parse_args()
  

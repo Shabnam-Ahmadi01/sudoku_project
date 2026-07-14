@@ -17,6 +17,7 @@ from sklearn.model_selection import train_test_split
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from src.recognition.sudoku_preprocess import cell_to_mnist_format
+from src.recognition.custom_dataset import build_custom_digit_dataset
 import sys
 from model import build_cnn
 
@@ -58,6 +59,9 @@ def load_chars74():
         class_str = folder.lower().replace('sample', '')
         try:
             class_idx = int(class_str) - 1   # sample001->0 ... sample010->9
+            # Class 0 is reserved for empty sudoku cells; skip digit '0' (sample001)
+            if class_idx == 0:
+                continue
         except ValueError:
             # If it's not a pure number, we need to map it differently
             # For letters, sample010 might be 'A' (or 'a')
@@ -115,6 +119,32 @@ def load_chars74():
     return (x_train, y_train), (x_test, y_test)
 
 
+def load_sudoku_data(empty_fraction=0.15):
+    """Load sudoku cell images (classes 1-9 from .dat labels, class 0 = empty cells).
+    Returns ((x_train, y_train), (x_test, y_test)) or None if data not found.
+    """
+    data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "v2_train", "v2_train")
+    if not os.path.exists(data_dir):
+        print(f"[sudoku data] Directory not found: {data_dir}  — skipping.")
+        return None
+
+    X, y, _ = build_custom_digit_dataset(data_dir, empty_fraction=empty_fraction)
+    if len(X) == 0:
+        print("[sudoku data] No images loaded — skipping.")
+        return None
+
+    X = X.astype("float32")
+
+    # Stratify only when every class has enough samples for both splits
+    unique, counts = np.unique(y, return_counts=True)
+    can_stratify = bool(np.all(counts >= 2))
+    x_train, x_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42,
+        stratify=y if can_stratify else None,
+    )
+    return (x_train, y_train), (x_test, y_test)
+
+
 def plot_training_curves(history, path):
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     axes[0].plot(history.history["loss"], label="train")
@@ -148,6 +178,22 @@ def plot_confusion_matrix(y_true, y_pred, labels, path, title):
 
 def main(epochs=15, batch_size=128):
     (x_train, y_train), (x_test, y_test) = load_chars74()
+    print(f"Chars74K: {len(x_train)} train / {len(x_test)} test samples")
+
+    sudoku_split = load_sudoku_data(empty_fraction=0.15)
+    if sudoku_split is not None:
+        (xs_train, ys_train), (xs_test, ys_test) = sudoku_split
+        print(f"Sudoku:   {len(xs_train)} train / {len(xs_test)} test samples")
+        x_train = np.concatenate([x_train, xs_train])
+        y_train = np.concatenate([y_train, ys_train])
+        x_test  = np.concatenate([x_test,  xs_test])
+        y_test  = np.concatenate([y_test,  ys_test])
+        # Shuffle combined training set
+        perm = np.random.permutation(len(x_train))
+        x_train, y_train = x_train[perm], y_train[perm]
+
+    print(f"Combined: {len(x_train)} train / {len(x_test)} test samples")
+    print(f"Class distribution (train): {np.bincount(y_train.astype(int))}")
 
     # held-out validation split from training data
     val_frac = 0.1
@@ -155,8 +201,8 @@ def main(epochs=15, batch_size=128):
     x_val, y_val = x_train[:n_val], y_train[:n_val]
     x_train, y_train = x_train[n_val:], y_train[n_val:]
 
-    # Determine number of classes from the dataset
-    num_classes = len(np.unique(y_train))
+    # Always 10 classes: 0=empty cell, 1-9=sudoku digits
+    num_classes = 10
     print(f"Number of classes: {num_classes}")
     
     model = build_cnn(input_shape=(28, 28, 1), num_classes=num_classes, augment=True)

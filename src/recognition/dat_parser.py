@@ -1,3 +1,11 @@
+import os
+
+
+def dat_path(img_path):
+    """Return the .dat label path for any image path, regardless of extension."""
+    return os.path.splitext(img_path)[0] + ".dat"
+
+
 def parse_dat_file(path):
     with open(path, "r") as f:
         lines = [line.strip() for line in f.readlines() if line.strip() != ""]
