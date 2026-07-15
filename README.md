@@ -1,0 +1,1 @@
+run pipeline with: python ./src/pipeline.py

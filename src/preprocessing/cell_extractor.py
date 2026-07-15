@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 CELL_MARGIN_FRAC = 0.16   # fraction of cell size to crop off each edge
-EMPTY_PIXEL_THRESH = 0.1  # fraction of non-zero pixels below which a cell
+EMPTY_PIXEL_THRESH = 0.01  # fraction of non-zero pixels below which a cell
                             # is considered empty
 def _cell_boundaries(thresh, size, n=9, search_frac=0.15, margin_frac=CELL_MARGIN_FRAC):
     """For each cell, locally detects its 4 edge positions by searching
@@ -79,33 +79,69 @@ def split_into_cells(warped_gray, margin_frac=CELL_MARGIN_FRAC):
         cells.append(warped_gray[y1:y2, x1:x2])
     return cells
 
+def is_cell_empty(
+    cell,
+    area_thresh=45,      # Increase if digits are thick, decrease if thin
+    border_crop=0.2,    # Ignore 12% border
+    min_blob_area=8       # Remove tiny noise blobs
+):
+    """
+    Returns True if the Sudoku cell is likely empty.
 
-def is_cell_empty(cell, pixel_thresh=EMPTY_PIXEL_THRESH):
-    """A cell is 'empty' if very few pixels are foreground after
-    thresholding. Uses Otsu since each cell crop is small and roughly
-    bimodal (digit vs background)."""
+    Method:
+    1. Adaptive threshold
+    2. Ignore border region (where grid lines usually are)
+    3. Morphological opening
+    4. Remove tiny connected components
+    5. Check area of the largest remaining connected component
+    """
 
     if cell.size == 0:
         return True
+
+    # Blur
     blur = cv2.GaussianBlur(cell, (3, 3), 0)
-    # _, thresh = cv2.threshold(blur, 0, 255,
-    #                            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Adaptive threshold
     thresh = cv2.adaptiveThreshold(
-        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 5
+        blur,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        15,
+        5,
     )
-    # print(cell.shape)
-    # cv2.imshow("Cell thresh", thresh)
-    # ignore a thin border ring in case grid lines leaked into the crop
+
+    # Crop borders to remove grid lines
     h, w = thresh.shape
-    bw = max(1, int(0.08 * w))
-    bh = max(1, int(0.08 * h))
-    inner = thresh[bh:h - bh, bw:w - bw]
+    bx = int(border_crop * w)
+    by = int(border_crop * h)
+
+    inner = thresh[by:h-by, bx:w-bx]
     if inner.size == 0:
         inner = thresh
 
-    fg_fraction = np.count_nonzero(inner) / inner.size
-    return fg_fraction < pixel_thresh
+    # Remove isolated noise
+    kernel = np.ones((2, 2), np.uint8)
+    inner = cv2.morphologyEx(inner, cv2.MORPH_OPEN, kernel)
 
+    # Connected components
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+        inner, connectivity=8
+    )
+
+    largest_area = 0
+
+    # Skip background (label 0)
+    for i in range(1, num_labels):
+        area = stats[i, cv2.CC_STAT_AREA]
+
+        if area < min_blob_area:
+            continue
+
+        largest_area = max(largest_area, area)
+
+    return largest_area < area_thresh
 
 def extract_cells_with_empty_mask(warped_gray):
     """Convenience wrapper: returns (cells, empty_mask) where empty_mask is

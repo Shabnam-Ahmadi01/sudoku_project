@@ -3,7 +3,6 @@ from tensorflow.keras import layers
 import tensorflow as tf
 import numpy as np
 
-
 @keras.utils.register_keras_serializable(package="sudoku_recognition")
 class RandomGaussianBlur(layers.Layer):
     """Applies a random-sigma Gaussian blur, only at training time."""
@@ -177,51 +176,5 @@ def build_augmentation():
         RandomGaussianBlur(min_sigma=0.0, max_sigma=2.0, kernel_size=7),
         RandomMotionBlur(probability=0.3, kernel_size=5),
         RandomErodeDilate(kernel_size=2, probability=0.4),
-        RandomJPEGCompression(min_quality=25, max_quality=85, probability=0.3),
+        # RandomJPEGCompression(min_quality=25, max_quality=85, probability=0.3),
     ], name="augmentation")
-
-
-def build_cnn(input_shape=(28, 28, 1), num_classes=10, augment=True):
-    inputs = keras.Input(shape=input_shape)
-    x = inputs
-
-    if augment:
-        x = build_augmentation()(x)
-
-    # normalize 0-255 -> 0-1 inside the model so the same saved model can
-    # accept raw uint8-range input consistently at inference time too
-    x = layers.Rescaling(1.0 / 255)(x)
-
-    # Block 1
-    x = layers.Conv2D(32, 3, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation("relu")(x)
-    x = layers.Conv2D(32, 3, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation("relu")(x)
-    x = layers.MaxPooling2D()(x)
-    x = layers.Dropout(0.25)(x)
-
-    # Block 2
-    x = layers.Conv2D(64, 3, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation("relu")(x)
-    x = layers.Conv2D(64, 3, padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation("relu")(x)
-    x = layers.MaxPooling2D()(x)
-    x = layers.Dropout(0.25)(x)
-
-    x = layers.Flatten()(x)
-    x = layers.Dense(128)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation("relu")(x)
-    x = layers.Dropout(0.4)(x)
-    outputs = layers.Dense(num_classes, activation="softmax")(x)
-
-    model = keras.Model(inputs, outputs, name="digit_cnn")
-    return model
-
-if __name__ == "main":
-    model = build_cnn(input_shape=(28, 28, 1), num_classes=10)
-    print(model.summary())

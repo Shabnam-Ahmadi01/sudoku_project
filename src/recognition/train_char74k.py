@@ -13,11 +13,8 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay
 from tensorflow import keras
 import cv2
-from sklearn.model_selection import train_test_split
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from src.recognition.sudoku_preprocess import cell_to_mnist_format
-from src.recognition.custom_dataset import build_custom_digit_dataset
+from src.recognition.custom_dataset import load_chars74,load_sudoku_data
 import sys
 from model import build_cnn
 
@@ -26,123 +23,6 @@ OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "outputs")
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(OUT_DIR, exist_ok=True)
 
-
-def load_chars74():
-    """
-    Loads Chars74K dataset where each sample folder (sampleXXX) contains images of the same character.
-    The folder name indicates the character class (e.g., sample002 = character '1').
-    """
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "chars74k")
-    
-    if not os.path.exists(data_dir):
-        raise FileNotFoundError(f"Chars74K data directory not found at {data_dir}. "
-                               f"Please ensure the dataset is in the correct location.")
-    
-    images = []
-    labels = []
-    
-    # Get all sample folders
-    sample_folders = sorted([f for f in os.listdir(data_dir) 
-                            if os.path.isdir(os.path.join(data_dir, f)) and f.lower().startswith('sample')
-                            and 1 <= int(f.lower().replace('sample', '')) <= 10])
-    
-    print(f"Found {len(sample_folders)} sample folders")
-    
-    # Map sample folder to class label
-    # Assuming sampleXXX format where XXX is the character class
-    # For digits: sample002 -> digit '2'
-    # For letters: sample010 -> 'A' or 'a' depending on case
-    for folder in sample_folders:
-        folder_path = os.path.join(data_dir, folder)
-        
-        # Extract class number from folder name (remove 'sample' prefix)
-        class_str = folder.lower().replace('sample', '')
-        try:
-            class_idx = int(class_str) - 1   # sample001->0 ... sample010->9
-            # Class 0 is reserved for empty sudoku cells; skip digit '0' (sample001)
-            if class_idx == 0:
-                continue
-        except ValueError:
-            # If it's not a pure number, we need to map it differently
-            # For letters, sample010 might be 'A' (or 'a')
-            # Map to 0-61 for 62 classes (10 digits + 26 uppercase + 26 lowercase)
-            # This is a simplified mapping - you may need to adjust based on your actual dataset
-            if len(class_str) == 1:
-                if class_str.isdigit():
-                    class_idx = int(class_str)
-                elif class_str.isupper():
-                    class_idx = 10 + ord(class_str) - ord('A')
-                elif class_str.islower():
-                    class_idx = 36 + ord(class_str) - ord('a')
-                else:
-                    continue
-            else:
-                # Handle multi-character class names if needed
-                continue
-        
-        # Load all images in this folder
-        for img_file in os.listdir(folder_path):
-            if img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')):
-                img_path = os.path.join(folder_path, img_file)
-                raw = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-                if raw is not None:
-                    # Match inference-time preprocessing exactly: crop to
-                    # digit bounding box, invert to white-on-black, center
-                    # in a padded 28x28 canvas (same as cell_to_mnist_format
-                    # applies to real sudoku cell crops at inference time).
-                    img = cell_to_mnist_format(raw)
-                    if img is not None:
-                        images.append(img)
-                        labels.append(class_idx)
-    
-    if len(images) == 0:
-        raise ValueError("No images found in the dataset. Please check the data directory structure.")
-    
-    images = np.array(images)
-    labels = np.array(labels)
-    
-    # Keep raw 0-255 range -- the model's own Rescaling(1/255) layer
-    # normalizes at inference/training time, so don't double-normalize here.
-    images = images.astype("float32")
-    
-    # Add channel dimension
-    images = images[..., np.newaxis]
-    
-    print(f"Loaded {len(images)} images from {len(sample_folders)} classes")
-    print(f"Class distribution: {np.bincount(labels)}")
-    
-    # Split into train and test sets (80-20 split)
-    x_train, x_test, y_train, y_test = train_test_split(
-        images, labels, test_size=0.2, random_state=42, stratify=labels
-    )
-    
-    return (x_train, y_train), (x_test, y_test)
-
-
-def load_sudoku_data(empty_fraction=0.15):
-    """Load sudoku cell images (classes 1-9 from .dat labels, class 0 = empty cells).
-    Returns ((x_train, y_train), (x_test, y_test)) or None if data not found.
-    """
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "v2_train", "v2_train")
-    if not os.path.exists(data_dir):
-        print(f"[sudoku data] Directory not found: {data_dir}  — skipping.")
-        return None
-
-    X, y, _ = build_custom_digit_dataset(data_dir, empty_fraction=empty_fraction)
-    if len(X) == 0:
-        print("[sudoku data] No images loaded — skipping.")
-        return None
-
-    X = X.astype("float32")
-
-    # Stratify only when every class has enough samples for both splits
-    unique, counts = np.unique(y, return_counts=True)
-    can_stratify = bool(np.all(counts >= 2))
-    x_train, x_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42,
-        stratify=y if can_stratify else None,
-    )
-    return (x_train, y_train), (x_test, y_test)
 
 
 def plot_training_curves(history, path):
@@ -176,7 +56,7 @@ def plot_confusion_matrix(y_true, y_pred, labels, path, title):
     return cm
 
 
-def main(epochs=15, batch_size=128):
+def main(epochs=20, batch_size=128):
     (x_train, y_train), (x_test, y_test) = load_chars74()
     print(f"Chars74K: {len(x_train)} train / {len(x_test)} test samples")
 

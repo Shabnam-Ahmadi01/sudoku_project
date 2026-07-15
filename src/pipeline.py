@@ -23,6 +23,9 @@ from config import MODEL_PATH,TEST_DATA_PATH
 def sudoku_pipeline(img_path,model, debug=False, confidence_threshold=0.0):
     status = 0
 
+    if model == None:
+        model = keras.models.load_model(MODEL_PATH)
+
     try:
         processed_image = process_image(img_path,show=debug)
     except Exception as e:
@@ -33,7 +36,9 @@ def sudoku_pipeline(img_path,model, debug=False, confidence_threshold=0.0):
 
     matrix,conf = predict_from_cells(model, processed_image.cells, 
                                      processed_image.empty_mask, confidence_threshold=confidence_threshold)
-
+    if(debug):
+        print(matrix)
+        
     solve_results = solve_sudoku(matrix, raise_on_invalid=debug)
     solved = solve_results.solved_matrix
     conflicts = solve_results.conflicts
@@ -66,4 +71,4 @@ def sudoku_pipeline(img_path,model, debug=False, confidence_threshold=0.0):
 
 if __name__ == "__main__":
     path = f"{TEST_DATA_PATH}/image1072.jpg"
-    sudoku_pipeline(path,debug=True)
+    sudoku_pipeline(path,None,debug=True)

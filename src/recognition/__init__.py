@@ -4,7 +4,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from .sudoku_preprocess import sudoku_to_mnist, cell_to_mnist_format
+from .sudoku_preprocess import sudoku_to_mnist, cell_to_model_format
 from config import CONFIDENCE_THRESHOLD
 
 
@@ -18,7 +18,7 @@ def predict_from_cells(model, cells, empty_mask, confidence_threshold=CONFIDENCE
     for idx, (cell, is_empty) in enumerate(zip(cells, empty_mask)):
         if is_empty:
             continue
-        mnist_cell = cell_to_mnist_format(cell)
+        mnist_cell = cell_to_model_format(cell)
         if mnist_cell is None:
             continue
         r, c = divmod(idx, 9)

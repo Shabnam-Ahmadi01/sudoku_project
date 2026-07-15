@@ -13,7 +13,7 @@ from src.recognition.dat_parser import parse_dat_file, dat_path
 from src.solver import solve_sudoku
 from src.recognition import predict_matrix
 from src.preprocessing import process_image, visualize_cells
-from src.recognition.model import RandomGaussianBlur
+from src.recognition.augmentation import RandomGaussianBlur
 from config import DATA_PATH, MODEL_PATH, CONFIDENCE_THRESHOLD
 
 import warnings
@@ -25,6 +25,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0=all, 1=info, 2=warning, 3=error
 # Suppress CUDA warnings
 os.environ['CUDA_VISIBLE_DEVICES'] = '-1'  # Disable GPU detection
 
+FAILED_OUTPUT_DIR = "../outputs/failed2"
 
 def matrices_equal(a, b):
     return all(a[r][c] == b[r][c] for r in range(9) for c in range(9))
@@ -84,39 +85,47 @@ def evaluate_dataset(root_dir, model, confidence_threshold=CONFIDENCE_THRESHOLD,
             continue
  
         try:
-            solve_results, processed_image, recognized_matrix,confidences, status,_ = sudoku_pipeline(img_path, model, confidence_threshold=confidence_threshold)
-            if status == 1:
-                results["grid_detection_failed"] += 1
-                record["outcome"] = "grid_detection_failed"
-                per_image.append(record)
-                continue
-            solved = solve_results.solved_matrix
-            conflicts = solve_results.conflicts
-            
-        except ValueError:
-            solved, conflicts = None, []
-
-
+            processed_image = process_image(img_path)
+        except Exception as e:
+            results["grid_detection_failed"] += 1
+            record["outcome"] = "grid_detection_failed"
+            per_image.append(record)
+            if verbose:
+                print(f"  [FAIL grid] {record['image']}: {e}")
+            continue
+ 
+        recognized_matrix, confidences = predict_matrix(
+            img_path=img_path,
+            model=model,
+            confidence_threshold=confidence_threshold,
+        )
         record["recognized_matrix"] = recognized_matrix
         record["mean_confidence"] = float(confidences.mean())
+ 
+        try:
+            solved_result = solve_sudoku(recognized_matrix, raise_on_invalid=False)
+            solved = solved_result.solved_matrix
+            conflicts = solved_result.conflicts
+        except ValueError:
+            solved, conflicts = None, []
 
         filename = os.path.basename(img_path)
         if conflicts:
             results["recognition_invalid"] += 1
             record["outcome"] = "recognition_invalid"
             record["conflicts"] = conflicts
-            save_failed_attempt(processed_image,output_path=f"../outputs/failed2/{filename}",
+            save_failed_attempt(processed_image,output_path=f"{FAILED_OUTPUT_DIR}/{filename}",
                                 prediction=recognized_matrix, status="recognition_invalid")
         elif solved is None:
             results["unsolvable"] += 1
             record["outcome"] = "unsolvable"
-            save_failed_attempt(processed_image,output_path=f"../outputs/failed2/{filename}",
+            save_failed_attempt(processed_image,output_path=f"{FAILED_OUTPUT_DIR}/{filename}",
                                 prediction=recognized_matrix, status="unsolvable")
         elif matrices_equal(solved, true_solution):
             results["hit"] += 1
             record["outcome"] = "hit"
         else:
-            save_failed_attempt(processed_image,output_path=f"../outputs/failed2/{filename}",
+            save_failed_attempt(processed_image,output_path=f"{FAILED_OUTPUT_DIR}/{filename}",
                                 prediction=recognized_matrix,status="solved_but_wrong")
             results["solved_but_wrong"] += 1
             record["outcome"] = "solved_but_wrong"
@@ -155,6 +164,7 @@ def print_summary(results):
  
  
 def main():
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_root", help="path to v2_train or v2_test folder",default=DATA_PATH)
     parser.add_argument("--model", default=MODEL_PATH, help="path to trained model")
@@ -164,6 +174,15 @@ def main():
  
     from tensorflow import keras
     model = keras.models.load_model(args.model)
+
+
+    for filename in os.listdir(FAILED_OUTPUT_DIR):
+        file_path = os.path.join(FAILED_OUTPUT_DIR, filename)
+        try:
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print(f"Error deleting {file_path}: {e}")
  
     results, per_image = evaluate_dataset(
         model=model,

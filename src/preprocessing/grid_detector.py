@@ -83,11 +83,6 @@ def find_grid_contour(thresh, resized_shape, scale):
     best = None
     best_area = 0
 
-    # Area threshold is intentionally low (5%) -- in real photos the grid
-    # may occupy anywhere from a small portion to nearly the whole frame,
-    # and we don't want to reject valid detections just because the grid
-    # is small in the shot. The 4-point + aspect-ratio checks below filter
-    # out non-grid contours instead.
     for c in contours:
         area = cv2.contourArea(c)
         if area < 0.05 * img_area:

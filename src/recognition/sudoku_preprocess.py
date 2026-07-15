@@ -8,7 +8,7 @@ from .dat_parser import parse_dat_file
 from src.preprocessing import process_image
 from config import MNIST_SIZE, DIGIT_BOX
 
-def cell_to_mnist_format(cell_gray):
+def cell_to_model_format(cell_gray):
     """Returns a (28, 28) uint8 array in MNIST convention, or None if no
     digit pixels are found."""
 
@@ -45,8 +45,6 @@ def cell_to_mnist_format(cell_gray):
     # cv2.waitKey(0)
     return canvas
 
-
-
 def sudoku_to_mnist(img_path, include_empty=False):
     """Extract per-cell MNIST-format images from a sudoku image.
 
@@ -76,7 +74,7 @@ def sudoku_to_mnist(img_path, include_empty=False):
             meta.append({"image_path": img_path, "row": r, "col": c})
             continue
 
-        mnist_cell = cell_to_mnist_format(cell)
+        mnist_cell = cell_to_model_format(cell)
         if mnist_cell is None:
             continue
 
