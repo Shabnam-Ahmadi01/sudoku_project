@@ -1,0 +1,2 @@
+python e2e_evaluate.py --data_root ../data/v2_test/v2_test --model ../models/chars74_cnn.keras --max_images 40
+streamlit run streamlit_app.py
