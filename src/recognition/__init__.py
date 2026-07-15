@@ -9,11 +9,6 @@ from config import CONFIDENCE_THRESHOLD
 
 
 def predict_from_cells(model, cells, empty_mask, confidence_threshold=CONFIDENCE_THRESHOLD):
-    """Inference path: predict digits from pre-extracted cell crops.
-
-    Does not require a .dat label file. Use this in the API and anywhere
-    cells have already been extracted by process_image().
-    """
     X, meta = [], []
     for idx, (cell, is_empty) in enumerate(zip(cells, empty_mask)):
         if is_empty:
@@ -42,11 +37,6 @@ def predict_from_cells(model, cells, empty_mask, confidence_threshold=CONFIDENCE
 
 
 def predict_matrix(model, img_path, confidence_threshold=CONFIDENCE_THRESHOLD):
-    """Evaluation path: predict digits using ground-truth .dat file for cell filtering.
-
-    Requires a matching .dat label file next to the image. For API inference
-    use predict_from_cells() instead.
-    """
     X, _, meta = sudoku_to_mnist(img_path)
     X = np.array(X, dtype=np.uint8)[..., np.newaxis]
 

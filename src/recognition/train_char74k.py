@@ -176,7 +176,7 @@ def plot_confusion_matrix(y_true, y_pred, labels, path, title):
     return cm
 
 
-def main(epochs=15, batch_size=128):
+def main(epochs=20, batch_size=128):
     (x_train, y_train), (x_test, y_test) = load_chars74()
     print(f"Chars74K: {len(x_train)} train / {len(x_test)} test samples")
 

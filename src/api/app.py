@@ -40,7 +40,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Sudoku Solver API", version="1.0.0", lifespan=lifespan)
 
-
 @app.get("/")
 def health():
     return {"status": "ok"}
